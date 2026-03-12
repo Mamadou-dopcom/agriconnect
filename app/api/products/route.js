@@ -92,10 +92,15 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { name, description, categoryId, pricePerUnit, unit, quantityAvailable, isOrganic, region, city } = body
+    const { name, description, categoryId, pricePerUnit, unit, quantityAvailable, isOrganic, region, city, images } = body
 
     if (!name || !pricePerUnit || !quantityAvailable) {
       return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
+    }
+
+    let validatedImages = []
+    if (images && Array.isArray(images)) {
+      validatedImages = images.slice(0, 5).filter(img => typeof img === 'string' && img.startsWith('data:image/'))
     }
 
     const sanitizedName = sanitizeInput(name, MAX_NAME_LENGTH)
@@ -136,6 +141,7 @@ export async function POST(request) {
         isOrganic: Boolean(isOrganic),
         region: sanitizeInput(region, 50),
         city: sanitizeInput(city, 50),
+        images: validatedImages,
       },
       include: { category: true }
     })

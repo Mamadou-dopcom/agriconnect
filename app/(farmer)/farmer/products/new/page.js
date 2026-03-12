@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import FarmerLayout from '@/components/farmer/FarmerLayout'
+import ImageUpload from '@/components/ImageUpload'
 
 export default function NewProductPage() {
   const router = useRouter()
@@ -21,7 +22,8 @@ export default function NewProductPage() {
     quantityAvailable: '',
     isOrganic: false,
     region: '',
-    city: ''
+    city: '',
+    images: []
   })
 
   useEffect(() => {
@@ -209,6 +211,15 @@ export default function NewProductPage() {
             />
             <span className="font-medium">🌱 Produit biologique</span>
           </label>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Photos du produit</label>
+            <ImageUpload
+              value={form.images}
+              onChange={(images) => update('images', images)}
+              max={5}
+            />
+          </div>
 
           <button
             type="submit"
