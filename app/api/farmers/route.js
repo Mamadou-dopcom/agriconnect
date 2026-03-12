@@ -30,7 +30,6 @@ export async function GET(request) {
         select: {
           id: true,
           fullName: true,
-          phone: true,
           farmerProfile: {
             select: {
               farmName: true,
@@ -39,13 +38,14 @@ export async function GET(request) {
               profileImage: true,
               rating: true,
               totalSales: true,
-              createdAt: true
+              createdAt: true,
+              _count: {
+                select: {
+                  products: { where: { status: 'active' } },
+                  reviews: true
+                }
+              }
             }
-          },
-          products: {
-            where: { status: 'active' },
-            select: { id: true },
-            take: 0
           }
         },
         skip,
@@ -55,32 +55,19 @@ export async function GET(request) {
       prisma.user.count({ where })
     ])
 
-    const farmersWithStats = await Promise.all(
-      farmers.map(async (farmer) => {
-        const productCount = await prisma.product.count({
-          where: { farmerId: farmer.id, status: 'active' }
-        })
-
-        const reviewCount = await prisma.review.count({
-          where: { farmerId: farmer.id }
-        })
-
-        return {
-          id: farmer.id,
-          fullName: farmer.fullName,
-          phone: farmer.phone,
-          farmName: farmer.farmerProfile?.farmName || farmer.fullName,
-          location: farmer.farmerProfile?.location || '',
-          bio: farmer.farmerProfile?.bio || '',
-          profileImage: farmer.farmerProfile?.profileImage || null,
-          rating: farmer.farmerProfile?.rating || 0,
-          totalSales: farmer.farmerProfile?.totalSales || 0,
-          productCount,
-          reviewCount,
-          memberSince: farmer.farmerProfile?.createdAt
-        }
-      })
-    )
+    const farmersWithStats = farmers.map(farmer => ({
+      id: farmer.id,
+      fullName: farmer.fullName,
+      farmName: farmer.farmerProfile?.farmName || farmer.fullName,
+      location: farmer.farmerProfile?.location || '',
+      bio: farmer.farmerProfile?.bio || '',
+      profileImage: farmer.farmerProfile?.profileImage || null,
+      rating: farmer.farmerProfile?.rating || 0,
+      totalSales: farmer.farmerProfile?.totalSales || 0,
+      productCount: farmer.farmerProfile?._count.products || 0,
+      reviewCount: farmer.farmerProfile?._count.reviews || 0,
+      memberSince: farmer.farmerProfile?.createdAt
+    }))
 
     return NextResponse.json({
       farmers: farmersWithStats,

@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isValidUUID } from '@/lib/validation'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 
 export async function GET(request, { params }) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+
     const { id } = params
 
     if (!isValidUUID(id)) {
@@ -15,7 +22,6 @@ export async function GET(request, { params }) {
       select: {
         id: true,
         fullName: true,
-        phone: true,
         farmerProfile: {
           select: {
             farmName: true,

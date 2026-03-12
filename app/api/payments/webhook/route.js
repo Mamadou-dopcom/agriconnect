@@ -3,10 +3,46 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkPaymentStatus } from '@/lib/payments'
+import crypto from 'crypto'
+
+function verifyWebhookSignature(signature, rawBody, secret) {
+  if (!signature || !secret) {
+    console.warn('Missing signature or secret for webhook verification')
+    return false
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody, 'utf8')
+    .digest('hex')
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  )
+}
 
 export async function POST(request) {
   try {
-    const body = await request.json()
+    const rawBody = await request.text()
+    const signature = request.headers.get('x-webhook-signature') || 
+                     request.headers.get('x-wave-signature') ||
+                     request.headers.get('x-orange-signature')
+
+    const webhookSecret = process.env.WAVE_WEBHOOK_SECRET || process.env.ORANGE_WEBHOOK_SECRET
+
+    if (webhookSecret && !verifyWebhookSignature(signature, rawBody, webhookSecret)) {
+      console.error('Invalid webhook signature')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+
+    let body
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
+
     const { event, reference, status, metadata } = body
 
     if (!reference) {
