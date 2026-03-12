@@ -1,19 +1,22 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import axios from 'axios'
 
 function FarmerDetailContent() {
-  const searchParams = useSearchParams()
-  const farmerId = searchParams.get('id')
+  const params = useParams()
+  const farmerId = params?.id
   const [farmer, setFarmer] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('products')
 
   useEffect(() => {
     const fetchFarmer = async () => {
-      if (!farmerId) return
+      if (!farmerId || Array.isArray(farmerId)) {
+        setLoading(false)
+        return
+      }
       try {
         const res = await axios.get(`/api/farmers/${farmerId}`)
         setFarmer(res.data)
@@ -167,8 +170,8 @@ function FarmerDetailContent() {
                     className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100"
                   >
                     <div className="aspect-square bg-gray-100 relative">
-                      {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                      {product.images?.[0] ? (
+                        <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-4xl">
                           {product.category?.emoji || '🥬'}
@@ -178,7 +181,7 @@ function FarmerDetailContent() {
                     <div className="p-3">
                       <h3 className="font-bold text-gray-900 text-sm truncate">{product.name}</h3>
                       <p className="text-gray-500 text-xs">{product.category?.name}</p>
-                      <p className="text-green-700 font-bold mt-1">{product.price.toLocaleString()} CFA</p>
+                      <p className="text-green-700 font-bold mt-1">{product.pricePerUnit.toLocaleString()} CFA</p>
                     </div>
                   </Link>
                 ))}
@@ -261,13 +264,5 @@ function FarmerDetailContent() {
 }
 
 export default function FarmerDetailPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-700"></div>
-      </div>
-    }>
-      <FarmerDetailContent />
-    </Suspense>
-  )
+  return <FarmerDetailContent />
 }

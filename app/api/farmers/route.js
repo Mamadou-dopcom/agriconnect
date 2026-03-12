@@ -4,23 +4,25 @@ import { prisma } from '@/lib/prisma'
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url)
-    const search = searchParams.get('search') || ''
-    const page = parseInt(searchParams.get('page')) || 1
-    const limit = parseInt(searchParams.get('limit')) || 12
+    const search = (searchParams.get('search') || '').trim()
+    const parsedPage = parseInt(searchParams.get('page') || '', 10)
+    const parsedLimit = parseInt(searchParams.get('limit') || '', 10)
+    const page = Number.isNaN(parsedPage) ? 1 : Math.max(parsedPage, 1)
+    const limit = Number.isNaN(parsedLimit) ? 12 : Math.min(Math.max(parsedLimit, 1), 50)
     const skip = (page - 1) * limit
 
     const where = {
-      role: 'farmer',
-      farmerProfile: {
-        isNot: null
-      }
+      role: 'FARMER',
+      farmerProfile: { isNot: null }
     }
 
     if (search) {
       where.OR = [
         { fullName: { contains: search, mode: 'insensitive' } },
-        { farmerProfile: { location: { contains: search, mode: 'insensitive' } } },
-        { farmerProfile: { farmName: { contains: search, mode: 'insensitive' } } }
+        { city: { contains: search, mode: 'insensitive' } },
+        { region: { contains: search, mode: 'insensitive' } },
+        { farmerProfile: { farmName: { contains: search, mode: 'insensitive' } } },
+        { farmerProfile: { farmDescription: { contains: search, mode: 'insensitive' } } }
       ]
     }
 
@@ -30,21 +32,17 @@ export async function GET(request) {
         select: {
           id: true,
           fullName: true,
+          city: true,
+          region: true,
+          avatarUrl: true,
+          createdAt: true,
           farmerProfile: {
             select: {
               farmName: true,
-              location: true,
-              bio: true,
-              profileImage: true,
+              farmDescription: true,
               rating: true,
               totalSales: true,
-              createdAt: true,
-              _count: {
-                select: {
-                  products: { where: { status: 'active' } },
-                  reviews: true
-                }
-              }
+              createdAt: true
             }
           }
         },
@@ -55,19 +53,51 @@ export async function GET(request) {
       prisma.user.count({ where })
     ])
 
-    const farmersWithStats = farmers.map(farmer => ({
-      id: farmer.id,
-      fullName: farmer.fullName,
-      farmName: farmer.farmerProfile?.farmName || farmer.fullName,
-      location: farmer.farmerProfile?.location || '',
-      bio: farmer.farmerProfile?.bio || '',
-      profileImage: farmer.farmerProfile?.profileImage || null,
-      rating: farmer.farmerProfile?.rating || 0,
-      totalSales: farmer.farmerProfile?.totalSales || 0,
-      productCount: farmer.farmerProfile?._count.products || 0,
-      reviewCount: farmer.farmerProfile?._count.reviews || 0,
-      memberSince: farmer.farmerProfile?.createdAt
-    }))
+    const farmerIds = farmers.map((farmer) => farmer.id)
+
+    const [productCounts, reviewCounts] = await Promise.all([
+      prisma.product.groupBy({
+        by: ['farmerId'],
+        where: {
+          farmerId: { in: farmerIds },
+          isAvailable: true,
+          quantityAvailable: { gt: 0 }
+        },
+        _count: { _all: true }
+      }),
+      prisma.review.groupBy({
+        by: ['farmerId'],
+        where: { farmerId: { in: farmerIds } },
+        _count: { _all: true }
+      })
+    ])
+
+    const productCountByFarmer = Object.fromEntries(
+      productCounts.map((item) => [item.farmerId, item._count._all])
+    )
+    const reviewCountByFarmer = Object.fromEntries(
+      reviewCounts.map((item) => [item.farmerId, item._count._all])
+    )
+
+    const farmersWithStats = farmers.map((farmer) => {
+      const city = farmer.city || ''
+      const region = farmer.region || ''
+      const location = [city, region].filter(Boolean).join(', ')
+
+      return {
+        id: farmer.id,
+        fullName: farmer.fullName,
+        farmName: farmer.farmerProfile?.farmName || farmer.fullName,
+        location,
+        bio: farmer.farmerProfile?.farmDescription || '',
+        profileImage: farmer.avatarUrl || null,
+        rating: farmer.farmerProfile?.rating || 0,
+        totalSales: farmer.farmerProfile?.totalSales || 0,
+        productCount: productCountByFarmer[farmer.id] || 0,
+        reviewCount: reviewCountByFarmer[farmer.id] || 0,
+        memberSince: farmer.farmerProfile?.createdAt || farmer.createdAt
+      }
+    })
 
     return NextResponse.json({
       farmers: farmersWithStats,
@@ -80,6 +110,6 @@ export async function GET(request) {
     })
   } catch (err) {
     console.error('Farmers fetch error:', err)
-    return NextResponse.json({ error: 'Erreur lors de la récupération des producteurs' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors de la recuperation des producteurs' }, { status: 500 })
   }
 }

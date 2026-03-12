@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isValidUUID } from '@/lib/validation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 
@@ -8,26 +7,24 @@ export async function GET(request, { params }) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+      return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
     }
 
     const { id } = params
 
-    if (!isValidUUID(id)) {
-      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
-    }
-
-    const farmer = await prisma.user.findUnique({
-      where: { id, role: 'farmer' },
+    const farmer = await prisma.user.findFirst({
+      where: { id, role: 'FARMER' },
       select: {
         id: true,
         fullName: true,
+        city: true,
+        region: true,
+        avatarUrl: true,
+        createdAt: true,
         farmerProfile: {
           select: {
             farmName: true,
-            location: true,
-            bio: true,
-            profileImage: true,
+            farmDescription: true,
             rating: true,
             totalSales: true,
             createdAt: true
@@ -37,12 +34,16 @@ export async function GET(request, { params }) {
     })
 
     if (!farmer) {
-      return NextResponse.json({ error: 'Producteur non trouvé' }, { status: 404 })
+      return NextResponse.json({ error: 'Producteur non trouve' }, { status: 404 })
     }
 
     const [products, reviewCount, reviews] = await Promise.all([
       prisma.product.findMany({
-        where: { farmerId: id, status: 'active', isAvailable: true, quantityAvailable: { gt: 0 } },
+        where: {
+          farmerId: id,
+          isAvailable: true,
+          quantityAvailable: { gt: 0 }
+        },
         include: { category: true },
         orderBy: { createdAt: 'desc' }
       }),
@@ -57,19 +58,21 @@ export async function GET(request, { params }) {
       })
     ])
 
+    const location = [farmer.city, farmer.region].filter(Boolean).join(', ')
+
     return NextResponse.json({
       id: farmer.id,
       fullName: farmer.fullName,
       farmName: farmer.farmerProfile?.farmName || farmer.fullName,
-      location: farmer.farmerProfile?.location || '',
-      bio: farmer.farmerProfile?.bio || '',
-      profileImage: farmer.farmerProfile?.profileImage || null,
+      location,
+      bio: farmer.farmerProfile?.farmDescription || '',
+      profileImage: farmer.avatarUrl || null,
       rating: farmer.farmerProfile?.rating || 0,
       totalSales: farmer.farmerProfile?.totalSales || 0,
-      memberSince: farmer.farmerProfile?.createdAt,
+      memberSince: farmer.farmerProfile?.createdAt || farmer.createdAt,
       reviewCount,
       products,
-      recentReviews: reviews.map(r => ({
+      recentReviews: reviews.map((r) => ({
         id: r.id,
         rating: r.rating,
         comment: r.comment,
@@ -79,6 +82,6 @@ export async function GET(request, { params }) {
     })
   } catch (err) {
     console.error('Farmer fetch error:', err)
-    return NextResponse.json({ error: 'Erreur lors de la récupération du producteur' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors de la recuperation du producteur' }, { status: 500 })
   }
 }

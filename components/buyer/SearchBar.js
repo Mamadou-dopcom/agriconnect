@@ -1,19 +1,24 @@
 'use client'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function SearchBar() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') || '')
 
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '')
+  }, [searchParams])
+
   const handleSearch = (e) => {
     e.preventDefault()
-    if (search.trim()) {
-      router.push(`/buyer/home?search=${encodeURIComponent(search)}`)
-    } else {
-      router.push('/buyer/home')
-    }
+    const params = new URLSearchParams(searchParams.toString())
+    if (search.trim()) params.set('search', search.trim())
+    else params.delete('search')
+
+    const query = params.toString()
+    router.push(query ? `/buyer/home?${query}` : '/buyer/home')
   }
 
   return (

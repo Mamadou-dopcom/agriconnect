@@ -34,9 +34,14 @@ function FarmersContent() {
     }
   }
 
+  const searchParamsString = searchParams.toString()
+
   useEffect(() => {
-    fetchFarmers(search, page)
-  }, [searchParams.get('page')])
+    const currentSearch = searchParams.get('search') || ''
+    const currentPage = parseInt(searchParams.get('page') || '1', 10) || 1
+    setSearch(currentSearch)
+    fetchFarmers(currentSearch, currentPage)
+  }, [searchParamsString])
 
   const handleSearch = (e) => {
     const value = e.target.value

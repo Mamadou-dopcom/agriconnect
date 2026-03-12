@@ -7,14 +7,20 @@ import ProductCard from '@/components/buyer/ProductCard'
 import SearchBar from '@/components/buyer/SearchBar'
 
 async function getProducts(searchParams) {
+  const category = typeof searchParams?.category === 'string' ? searchParams.category.trim() : ''
+  const search = typeof searchParams?.search === 'string' ? searchParams.search.trim() : ''
+
   const where = {
     isAvailable: true,
     quantityAvailable: { gt: 0 },
-    ...(searchParams?.category && {
-      category: { name: { contains: searchParams.category, mode: 'insensitive' } }
+    ...(category && {
+      category: { name: { contains: category, mode: 'insensitive' } }
     }),
-    ...(searchParams?.search && {
-      name: { contains: searchParams.search, mode: 'insensitive' }
+    ...(search && {
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
     }),
   }
 
@@ -43,8 +49,19 @@ export default async function BuyerHomePage({ searchParams }) {
   if (!session) redirect('/login')
   if (session.user.role !== 'BUYER') redirect('/')
 
+  const resolvedSearchParams = typeof searchParams?.then === 'function'
+    ? await searchParams
+    : (searchParams || {})
+
+  const currentCategory = typeof resolvedSearchParams.category === 'string' ? resolvedSearchParams.category : ''
+  const currentSearch = typeof resolvedSearchParams.search === 'string' ? resolvedSearchParams.search : ''
+
+  const allProductsHref = currentSearch
+    ? `/buyer/home?search=${encodeURIComponent(currentSearch)}`
+    : '/buyer/home'
+
   const [products, categories] = await Promise.all([
-    getProducts(searchParams),
+    getProducts(resolvedSearchParams),
     getCategories()
   ])
 
@@ -65,16 +82,18 @@ export default async function BuyerHomePage({ searchParams }) {
 
       {/* CATEGORIES */}
       <div className="bg-white px-6 py-3 flex gap-3 overflow-x-auto scrollbar-hide border-b border-gray-100">
-        <a href="/buyer/home"
+        <a href={allProductsHref}
           className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-            !searchParams?.category ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-gray-100 text-gray-500'
+            !currentCategory ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-gray-100 text-gray-500'
           }`}>
           🌿 Tout
         </a>
         {categories.map(cat => (
-          <a key={cat.id} href={`/buyer/home?category=${cat.name}`}
+          <a
+            key={cat.id}
+            href={`${allProductsHref}${allProductsHref.includes('?') ? '&' : '?'}category=${encodeURIComponent(cat.name)}`}
             className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-              searchParams?.category === cat.name ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-gray-100 text-gray-500'
+              currentCategory === cat.name ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-gray-100 text-gray-500'
             }`}>
             {cat.emoji} {cat.name}
           </a>
@@ -84,7 +103,7 @@ export default async function BuyerHomePage({ searchParams }) {
       {/* PRODUCTS */}
       <div className="px-4 py-4">
         <h2 className="font-sora font-bold text-gray-900 mb-4">
-          {searchParams?.category || 'Disponibles aujourd\'hui'}
+          {currentCategory || (currentSearch ? `Recherche: ${currentSearch}` : 'Disponibles aujourd\'hui')}
           <span className="text-gray-400 font-normal text-sm ml-2">({products.length})</span>
         </h2>
 

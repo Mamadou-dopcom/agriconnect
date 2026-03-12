@@ -16,6 +16,10 @@ export default function CartPage() {
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [feesConfig, setFeesConfig] = useState({ deliveryFee: 700, platformCommissionPercent: 10 })
 
+  const uniqueFarmerIds = Array.from(new Set(cart.map((item) => item.product?.farmerId).filter(Boolean)))
+  const hasMultipleFarmers = uniqueFarmerIds.length > 1
+  const ordersCount = uniqueFarmerIds.length || 0
+
   const fetchCart = async () => {
     try {
       const [cartRes, configRes] = await Promise.all([
@@ -65,6 +69,13 @@ export default function CartPage() {
         return
       }
 
+      const createdOrders = Array.isArray(res.data?.orders) ? res.data.orders : []
+      if (createdOrders.length > 1) {
+        toast.success(`${createdOrders.length} commandes créées avec succès !`)
+        router.push('/buyer/orders')
+        return
+      }
+
       toast.success('Commande passée avec succès !')
       router.push(`/buyer/orders/${res.data.order.id}`)
     } catch (err) {
@@ -74,9 +85,24 @@ export default function CartPage() {
     }
   }
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.product.pricePerUnit * item.quantity), 0)
-  const deliveryFee = cart.length > 0 ? feesConfig.deliveryFee : 0
-  const commission = Math.round(subtotal * (feesConfig.platformCommissionPercent / 100))
+  useEffect(() => {
+    if (hasMultipleFarmers && paymentMethod !== 'CASH') {
+      setPaymentMethod('CASH')
+    }
+  }, [hasMultipleFarmers, paymentMethod])
+
+  const subtotalByFarmer = cart.reduce((acc, item) => {
+    const farmerId = item.product?.farmerId
+    if (!farmerId) return acc
+    acc[farmerId] = (acc[farmerId] || 0) + (item.product.pricePerUnit * item.quantity)
+    return acc
+  }, {})
+
+  const subtotal = Object.values(subtotalByFarmer).reduce((sum, farmerSubtotal) => sum + farmerSubtotal, 0)
+  const deliveryFee = ordersCount > 0 ? (feesConfig.deliveryFee * ordersCount) : 0
+  const commission = Object.values(subtotalByFarmer).reduce((sum, farmerSubtotal) => {
+    return sum + Math.round(farmerSubtotal * (feesConfig.platformCommissionPercent / 100))
+  }, 0)
   const total = subtotal + deliveryFee + commission
 
   if (loading) {
@@ -130,6 +156,11 @@ export default function CartPage() {
 
             <div className="bg-white rounded-2xl p-4 border border-gray-100">
               <h3 className="font-bold text-gray-900 mb-3">Mode de paiement</h3>
+              {hasMultipleFarmers && (
+                <div className="mb-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-800 text-sm">
+                  Votre panier contient plusieurs producteurs. Le paiement en ligne multi-producteurs n'est pas encore disponible.
+                </div>
+              )}
               <div className="space-y-2">
                 {[
                   { key: 'CASH', icon: '💵', label: 'Espèces à la livraison' },
@@ -143,10 +174,13 @@ export default function CartPage() {
                       value={pm.key}
                       checked={paymentMethod === pm.key}
                       onChange={(e) => setPaymentMethod(e.target.value)}
+                      disabled={hasMultipleFarmers && pm.key !== 'CASH'}
                       className="w-4 h-4 text-green-600"
                     />
                     <span className="text-xl">{pm.icon}</span>
-                    <span className="font-medium">{pm.label}</span>
+                    <span className={`font-medium ${hasMultipleFarmers && pm.key !== 'CASH' ? 'text-gray-400' : ''}`}>
+                      {pm.label}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -167,6 +201,11 @@ export default function CartPage() {
                   <span className="text-gray-500">Commission plateforme</span>
                   <span>{commission.toLocaleString()} XOF</span>
                 </div>
+                {hasMultipleFarmers && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                    Le panier sera split en {ordersCount} commandes, avec frais et commission par producteur.
+                  </p>
+                )}
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>Total</span>
                   <span className="text-green-700">{total.toLocaleString()} XOF</span>

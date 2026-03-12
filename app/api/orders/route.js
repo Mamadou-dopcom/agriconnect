@@ -105,40 +105,73 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Numéro invalide pour Orange Money' }, { status: 400 })
     }
 
-    let subtotal = 0
-    let farmerId = null
-    const orderItems = []
+    const deliveryFee = config.deliveryFee
+    if (deliveryFee < config.minDeliveryFee || deliveryFee > config.maxDeliveryFee) {
+      return NextResponse.json({ error: 'Frais de livraison invalides' }, { status: 400 })
+    }
 
-    for (const item of items) {
+    const normalizedItems = items.map((item) => ({
+      productId: item?.productId,
+      quantity: parseFloat(item?.quantity)
+    }))
+
+    for (const item of normalizedItems) {
       if (!item.productId || typeof item.productId !== 'string') {
         return NextResponse.json({ error: 'ID produit invalide' }, { status: 400 })
       }
-
-      const quantity = parseFloat(item.quantity)
-      if (isNaN(quantity) || quantity <= 0) {
+      if (isNaN(item.quantity) || item.quantity <= 0) {
         return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
       }
-
-      if (quantity > MAX_QUANTITY_PER_ITEM) {
+      if (item.quantity > MAX_QUANTITY_PER_ITEM) {
         return NextResponse.json({ error: `Quantité maximale: ${MAX_QUANTITY_PER_ITEM}` }, { status: 400 })
       }
+    }
 
-      const product = await prisma.product.findUnique({ where: { id: item.productId } })
-      if (!product || !product.isAvailable) {
-        return NextResponse.json({ error: `Produit ${item.productId} non disponible` }, { status: 400 })
+    const mergedByProductId = new Map()
+    for (const item of normalizedItems) {
+      const current = mergedByProductId.get(item.productId) || 0
+      mergedByProductId.set(item.productId, current + item.quantity)
+    }
+
+    const productIds = Array.from(mergedByProductId.keys())
+    const products = await prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        isAvailable: true,
+      }
+    })
+
+    if (products.length !== productIds.length) {
+      return NextResponse.json({ error: 'Un ou plusieurs produits sont non disponibles' }, { status: 400 })
+    }
+
+    const productsById = new Map(products.map((product) => [product.id, product]))
+    const groupsByFarmer = new Map()
+
+    for (const [productId, quantity] of mergedByProductId.entries()) {
+      const product = productsById.get(productId)
+      if (!product) {
+        return NextResponse.json({ error: `Produit ${productId} non disponible` }, { status: 400 })
       }
       if (product.quantityAvailable < quantity) {
         return NextResponse.json({ error: `Stock insuffisant pour ${product.name}` }, { status: 400 })
       }
 
-      if (farmerId && farmerId !== product.farmerId) {
-        return NextResponse.json({ error: 'Produits de différents agriculteurs non supportés' }, { status: 400 })
+      const farmerId = product.farmerId
+      if (!groupsByFarmer.has(farmerId)) {
+        groupsByFarmer.set(farmerId, {
+          farmerId,
+          subtotal: 0,
+          orderItems: [],
+          productIds: []
+        })
       }
-      farmerId = product.farmerId
 
+      const group = groupsByFarmer.get(farmerId)
       const total = product.pricePerUnit * quantity
-      subtotal += total
-      orderItems.push({
+      group.subtotal += total
+      group.productIds.push(product.id)
+      group.orderItems.push({
         productId: product.id,
         productName: product.name,
         quantity,
@@ -149,57 +182,78 @@ export async function POST(request) {
       })
     }
 
-    const deliveryFee = config.deliveryFee
-    if (deliveryFee < config.minDeliveryFee || deliveryFee > config.maxDeliveryFee) {
-      return NextResponse.json({ error: 'Frais de livraison invalides' }, { status: 400 })
+    const groupedOrders = Array.from(groupsByFarmer.values())
+
+    if (requiresOnlinePayment && groupedOrders.length > 1) {
+      return NextResponse.json({
+        error: 'Le paiement en ligne multi-producteurs n\'est pas encore disponible. Choisissez le paiement en espèces.'
+      }, { status: 400 })
     }
-    
-    const commission = Math.round(subtotal * (config.platformCommissionPercent / 100))
-    const totalAmount = subtotal + deliveryFee + commission
 
-    const order = await prisma.$transaction(async (tx) => {
-      const newOrder = await tx.order.create({
-        data: {
-          orderNumber: generateOrderNumber(),
-          buyerId: session.user.id,
-          farmerId,
-          deliveryAddress: sanitizedDeliveryAddress,
-          subtotal,
-          deliveryFee,
-          platformCommission: commission,
-          totalAmount,
-          paymentMethod,
-          notes: sanitizedNotes,
-          items: { create: orderItems }
-        },
-        include: { items: true, buyer: true, farmer: true }
-      })
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const created = []
 
-      for (const orderItem of orderItems) {
-        await tx.product.update({
-          where: { id: orderItem.productId },
+      for (const group of groupedOrders) {
+        const commission = Math.round(group.subtotal * (config.platformCommissionPercent / 100))
+        const totalAmount = group.subtotal + deliveryFee + commission
+
+        const newOrder = await tx.order.create({
           data: {
-            quantityAvailable: { decrement: orderItem.productQuantity },
-            ordersCount: { increment: 1 }
+            orderNumber: generateOrderNumber(),
+            buyerId: session.user.id,
+            farmerId: group.farmerId,
+            deliveryAddress: sanitizedDeliveryAddress,
+            subtotal: group.subtotal,
+            deliveryFee,
+            platformCommission: commission,
+            totalAmount,
+            paymentMethod,
+            notes: sanitizedNotes,
+            items: { create: group.orderItems }
+          },
+          include: { items: true, buyer: true, farmer: true }
+        })
+
+        for (const orderItem of group.orderItems) {
+          await tx.product.update({
+            where: { id: orderItem.productId },
+            data: {
+              quantityAvailable: { decrement: orderItem.productQuantity },
+              ordersCount: { increment: 1 }
+            }
+          })
+        }
+
+        await tx.notification.create({
+          data: {
+            userId: group.farmerId,
+            title: '🛒 Nouvelle commande !',
+            body: `Commande #${newOrder.orderNumber} — ${totalAmount.toLocaleString()} FCFA`,
+            type: 'new_order',
           }
+        })
+
+        created.push({
+          order: newOrder,
+          orderItems: group.orderItems,
+          totalAmount,
         })
       }
 
-      await tx.notification.create({
-        data: {
-          userId: farmerId,
-          title: '🛒 Nouvelle commande !',
-          body: `Commande #${newOrder.orderNumber} — ${totalAmount.toLocaleString()} FCFA`,
-          type: 'new_order',
+      await tx.cartItem.deleteMany({
+        where: {
+          userId: session.user.id,
+          productId: { in: productIds }
         }
       })
 
-      return newOrder
+      return created
     })
 
     let paymentPayload = null
 
     if (requiresOnlinePayment) {
+      const { order, orderItems, totalAmount } = createdOrders[0]
 
       const paymentMetadata = {
         provider,
@@ -284,7 +338,13 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json({ message: 'Commande créée !', order, payment: paymentPayload }, { status: 201 })
+    const orders = createdOrders.map((entry) => entry.order)
+    return NextResponse.json({
+      message: orders.length > 1 ? `${orders.length} commandes créées !` : 'Commande créée !',
+      orders,
+      order: orders[0],
+      payment: paymentPayload
+    }, { status: 201 })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

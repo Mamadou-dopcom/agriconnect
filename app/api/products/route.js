@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
-import { isValidUUID } from '@/lib/validation'
 
 const MAX_PRICE = 1000000
 const MAX_QUANTITY = 100000
@@ -25,9 +24,6 @@ export async function GET(request) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100)
 
     if (id) {
-      if (!isValidUUID(id)) {
-        return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
-      }
       const product = await prisma.product.findUnique({
         where: { id },
         include: {
