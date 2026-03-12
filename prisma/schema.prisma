@@ -41,6 +41,7 @@ model User {
   reviewsGiven    Review[]       @relation("ReviewsGiven")
   reviewsReceived Review[]       @relation("ReviewsReceived")
   notifications   Notification[]
+  cartItems       CartItem[]
 
   @@map("users")
 }
@@ -122,6 +123,7 @@ model Product {
   farmer     User       @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   category   Category?  @relation(fields: [categoryId], references: [id])
   orderItems OrderItem[]
+  cartItems  CartItem[]
 
   @@map("products")
 }
@@ -241,6 +243,24 @@ model Payment {
   order Order @relation(fields: [orderId], references: [id])
 
   @@map("payments")
+}
+
+// ============================================
+// PANIER
+// ============================================
+model CartItem {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  quantity  Float    @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("cart_items")
 }
 
 // ============================================

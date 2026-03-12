@@ -13,14 +13,39 @@ function sanitizeInput(input, maxLength = 500) {
   return input.trim().slice(0, maxLength)
 }
 
+function isValidUUID(uuid) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
     const category = searchParams.get('category')
     const region = searchParams.get('region')
     const search = searchParams.get('search')
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1)
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100)
+
+    if (id) {
+      if (!isValidUUID(id)) {
+        return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+      }
+      const product = await prisma.product.findUnique({
+        where: { id },
+        include: {
+          category: true,
+          farmer: {
+            select: {
+              id: true, fullName: true, city: true, region: true, avatarUrl: true,
+              farmerProfile: { select: { rating: true, ratingCount: true, isCertified: true } }
+            }
+          }
+        }
+      })
+      return NextResponse.json({ products: product ? [product] : [] })
+    }
 
     const where = {
       isAvailable: true,
