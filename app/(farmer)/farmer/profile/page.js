@@ -1,15 +1,20 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { signOut, useSession } from 'next-auth/react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import FarmerLayout from '@/components/farmer/FarmerLayout'
 
 export default function FarmerProfilePage() {
   const router = useRouter()
+  const { data: session, update: updateSession } = useSession()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [user, setUser] = useState(null)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [updatingAvatar, setUpdatingAvatar] = useState(false)
 
   const [form, setForm] = useState({
     fullName: '',
@@ -37,6 +42,7 @@ export default function FarmerProfilePage() {
       const res = await axios.get('/api/farmer/profile')
       const u = res.data
       setUser(u)
+      setAvatarUrl(u.avatarUrl || '')
       setForm({
         fullName: u.fullName || '',
         email: u.email || '',
@@ -69,6 +75,7 @@ export default function FarmerProfilePage() {
         specialties: form.specialties.split(',').map(s => s.trim()).filter(Boolean)
       }
       await axios.put('/api/farmer/profile', data)
+      await updateSession({ ...session, user: { ...session.user, name: form.fullName } })
       toast.success('Profil mis à jour !')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erreur lors de la mise à jour')
@@ -77,7 +84,21 @@ export default function FarmerProfilePage() {
     }
   }
 
-  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const handleAvatarUpdate = async () => {
+    if (!avatarUrl.trim()) return
+    setUpdatingAvatar(true)
+    try {
+      await axios.put('/api/user/avatar', { avatarUrl: avatarUrl.trim() })
+      await updateSession({ ...session, user: { ...session.user, image: avatarUrl.trim() } })
+      toast.success('Photo de profil mise à jour !')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la mise à jour')
+    } finally {
+      setUpdatingAvatar(false)
+    }
+  }
+
+  const updateForm = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   if (loading) {
     return (
@@ -92,6 +113,38 @@ export default function FarmerProfilePage() {
       <div className="p-4">
         <h1 className="font-sora font-bold text-xl text-gray-900 mb-4">Mon profil</h1>
 
+        {/* AVATAR SECTION */}
+        <div className="bg-white rounded-2xl p-4 border border-gray-100 mb-4">
+          <h3 className="font-bold text-gray-900 mb-3">Photo de profil</h3>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-3xl overflow-hidden">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                '👨‍🌾'
+              )}
+            </div>
+            <div className="flex-1">
+              <input
+                type="url"
+                placeholder="URL de votre photo de profil..."
+                value={avatarUrl}
+                onChange={(e) => setAvatarUrl(e.target.value)}
+                className="input-field w-full text-sm"
+              />
+              <p className="text-xs text-gray-400 mt-1">Collez l'URL d'une image</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAvatarUpdate}
+              disabled={updatingAvatar || !avatarUrl.trim()}
+              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {updatingAvatar ? '...' : 'OK'}
+            </button>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-white rounded-2xl p-4 border border-gray-100">
             <h3 className="font-bold text-gray-900 mb-3">Informations personnelles</h3>
@@ -102,7 +155,7 @@ export default function FarmerProfilePage() {
                 <input
                   className="input-field w-full"
                   value={form.fullName}
-                  onChange={(e) => update('fullName', e.target.value)}
+                  onChange={(e) => updateForm('fullName', e.target.value)}
                 />
               </div>
               <div>
@@ -121,7 +174,7 @@ export default function FarmerProfilePage() {
                   type="email"
                   className="input-field w-full"
                   value={form.email}
-                  onChange={(e) => update('email', e.target.value)}
+                  onChange={(e) => updateForm('email', e.target.value)}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -130,7 +183,7 @@ export default function FarmerProfilePage() {
                   <input
                     className="input-field w-full"
                     value={form.city}
-                    onChange={(e) => update('city', e.target.value)}
+                    onChange={(e) => updateForm('city', e.target.value)}
                   />
                 </div>
                 <div>
@@ -138,7 +191,7 @@ export default function FarmerProfilePage() {
                   <input
                     className="input-field w-full"
                     value={form.region}
-                    onChange={(e) => update('region', e.target.value)}
+                    onChange={(e) => updateForm('region', e.target.value)}
                   />
                 </div>
               </div>
@@ -154,7 +207,7 @@ export default function FarmerProfilePage() {
                 <input
                   className="input-field w-full"
                   value={form.farmName}
-                  onChange={(e) => update('farmName', e.target.value)}
+                  onChange={(e) => updateForm('farmName', e.target.value)}
                 />
               </div>
               <div>
@@ -163,7 +216,7 @@ export default function FarmerProfilePage() {
                   className="input-field w-full"
                   rows={3}
                   value={form.farmDescription}
-                  onChange={(e) => update('farmDescription', e.target.value)}
+                  onChange={(e) => updateForm('farmDescription', e.target.value)}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -173,7 +226,7 @@ export default function FarmerProfilePage() {
                     type="number"
                     className="input-field w-full"
                     value={form.farmSizeHectares}
-                    onChange={(e) => update('farmSizeHectares', e.target.value)}
+                    onChange={(e) => updateForm('farmSizeHectares', e.target.value)}
                   />
                 </div>
                 <div>
@@ -182,7 +235,7 @@ export default function FarmerProfilePage() {
                     type="number"
                     className="input-field w-full"
                     value={form.yearsExperience}
-                    onChange={(e) => update('yearsExperience', e.target.value)}
+                    onChange={(e) => updateForm('yearsExperience', e.target.value)}
                   />
                 </div>
               </div>
@@ -192,7 +245,7 @@ export default function FarmerProfilePage() {
                   className="input-field w-full"
                   placeholder="Légumes, Tomates, Oignons..."
                   value={form.specialties}
-                  onChange={(e) => update('specialties', e.target.value)}
+                  onChange={(e) => updateForm('specialties', e.target.value)}
                 />
               </div>
             </div>
@@ -206,7 +259,7 @@ export default function FarmerProfilePage() {
                 <input
                   type="checkbox"
                   checked={form.acceptsDelivery}
-                  onChange={(e) => update('acceptsDelivery', e.target.checked)}
+                  onChange={(e) => updateForm('acceptsDelivery', e.target.checked)}
                   className="w-5 h-5 text-green-600 rounded"
                 />
                 <span className="font-medium">J'accepte les livraisons</span>
@@ -218,7 +271,7 @@ export default function FarmerProfilePage() {
                     type="number"
                     className="input-field w-full"
                     value={form.deliveryRadiusKm}
-                    onChange={(e) => update('deliveryRadiusKm', e.target.value)}
+                    onChange={(e) => updateForm('deliveryRadiusKm', e.target.value)}
                   />
                 </div>
               )}
@@ -236,7 +289,7 @@ export default function FarmerProfilePage() {
                   className="input-field w-full"
                   placeholder="77 XXX XX XX"
                   value={form.bankAccountWave}
-                  onChange={(e) => update('bankAccountWave', e.target.value)}
+                  onChange={(e) => updateForm('bankAccountWave', e.target.value)}
                 />
               </div>
               <div>
@@ -245,7 +298,7 @@ export default function FarmerProfilePage() {
                   className="input-field w-full"
                   placeholder="77 XXX XX XX"
                   value={form.bankAccountOrange}
-                  onChange={(e) => update('bankAccountOrange', e.target.value)}
+                  onChange={(e) => updateForm('bankAccountOrange', e.target.value)}
                 />
               </div>
             </div>
@@ -258,8 +311,112 @@ export default function FarmerProfilePage() {
           >
             {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowPasswordModal(true)}
+            className="w-full py-3 text-green-700 font-semibold hover:bg-green-50 rounded-xl transition-colors"
+          >
+            Changer le mot de passe
+          </button>
+
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="w-full py-3 text-red-600 font-semibold hover:bg-red-50 rounded-xl transition-colors"
+          >
+            Se déconnecter
+          </button>
         </form>
       </div>
+
+      {showPasswordModal && (
+        <PasswordModal onClose={() => setShowPasswordModal(false)} />
+      )}
     </FarmerLayout>
+  )
+}
+
+function PasswordModal({ onClose }) {
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (form.newPassword.length < 6) {
+      setError('Le mot de passe doit contenir au moins 6 caractères')
+      return
+    }
+
+    if (form.newPassword !== form.confirmPassword) {
+      setError('Les mots de passe ne correspondent pas')
+      return
+    }
+
+    setSaving(true)
+    try {
+      await axios.put('/api/user/password', {
+        currentPassword: form.currentPassword,
+        newPassword: form.newPassword
+      })
+      toast.success('Mot de passe modifié !')
+      onClose()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors du changement')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+        <h3 className="font-bold text-lg mb-4">Changer le mot de passe</h3>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Mot de passe actuel</label>
+            <input
+              type="password"
+              className="input-field w-full"
+              value={form.currentPassword}
+              onChange={(e) => setForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Nouveau mot de passe</label>
+            <input
+              type="password"
+              className="input-field w-full"
+              value={form.newPassword}
+              onChange={(e) => setForm(prev => ({ ...prev, newPassword: e.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Confirmer le mot de passe</label>
+            <input
+              type="password"
+              className="input-field w-full"
+              value={form.confirmPassword}
+              onChange={(e) => setForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              required
+            />
+          </div>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 btn-secondary">
+              Annuler
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 btn-primary disabled:opacity-50">
+              {saving ? '...' : 'Modifier'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }

@@ -43,6 +43,7 @@ export default function BuyerLayout({ children }) {
 
   const navItems = [
     { href: '/buyer/home', icon: '🏠', label: 'Accueil' },
+    { href: '/buyer/farmers', icon: '👨‍🌾', label: 'Producteurs' },
     { href: '/buyer/cart', icon: '🛒', label: 'Panier', badge: cartCount },
     { href: '/buyer/orders', icon: '📦', label: 'Commandes' },
     { href: '/buyer/profile', icon: '👤', label: 'Profil' },
