@@ -1,11 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const defaultRole = searchParams.get('role') || 'buyer'
@@ -49,7 +49,6 @@ export default function RegisterPage() {
 
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* RÔLE */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">Je suis...</label>
             <div className="grid grid-cols-2 gap-3">
@@ -115,5 +114,21 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function Loading() {
+  return (
+    <div className="min-h-screen bg-green-800 flex items-center justify-center">
+      <div className="text-white text-xl">Chargement...</div>
+    </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <RegisterForm />
+    </Suspense>
   )
 }

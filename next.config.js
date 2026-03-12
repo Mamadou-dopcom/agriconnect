@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['localhost', 'agriconnect.sn'],
-  },
-  experimental: {
-    serverActions: true,
+    remotePatterns: [
+      { hostname: 'localhost' },
+      { hostname: 'agriconnect.sn' },
+    ],
   },
 }
 
