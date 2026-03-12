@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { isValidUUID } from '@/lib/validation'
 
 const MAX_PRICE = 1000000
 const MAX_QUANTITY = 100000
@@ -11,11 +12,6 @@ const MAX_DESCRIPTION_LENGTH = 2000
 function sanitizeInput(input, maxLength = 500) {
   if (!input || typeof input !== 'string') return null
   return input.trim().slice(0, maxLength)
-}
-
-function isValidUUID(uuid) {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
 }
 
 export async function GET(request, { params }) {

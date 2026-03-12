@@ -2,101 +2,116 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkPaymentStatus } from '@/lib/payments'
-import crypto from 'crypto'
+import {
+  checkPaymentStatus,
+  extractNormalizedStatus,
+  extractPaymentReference,
+  extractProvider,
+  inferProviderFromHeaders,
+  verifyWebhookSignature,
+} from '@/lib/payments'
 
-function verifyWebhookSignature(signature, rawBody, secret) {
-  if (!signature || !secret) {
-    console.warn('Missing signature or secret for webhook verification')
-    return false
-  }
+function toDbPaymentStatus(status) {
+  if (status === 'completed') return 'PAID'
+  if (status === 'failed') return 'FAILED'
+  return 'PENDING'
+}
 
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody, 'utf8')
-    .digest('hex')
+async function resolvePaymentContext(reference) {
+  const order = await prisma.order.findFirst({
+    where: { paymentReference: reference },
+    include: { payment: true }
+  })
 
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  )
+  if (order) return { order, payment: order.payment }
+
+  const payment = await prisma.payment.findFirst({
+    where: { providerReference: reference },
+    include: { order: true }
+  })
+
+  if (!payment) return null
+  return { order: payment.order, payment }
 }
 
 export async function POST(request) {
   try {
     const rawBody = await request.text()
-    const signature = request.headers.get('x-webhook-signature') || 
-                     request.headers.get('x-wave-signature') ||
-                     request.headers.get('x-orange-signature')
 
-    const webhookSecret = process.env.WAVE_WEBHOOK_SECRET || process.env.ORANGE_WEBHOOK_SECRET
-
-    if (webhookSecret && !verifyWebhookSignature(signature, rawBody, webhookSecret)) {
-      console.error('Invalid webhook signature')
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
-
-    let body
+    let payload
     try {
-      body = JSON.parse(rawBody)
+      payload = JSON.parse(rawBody)
     } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
-    const { event, reference, status, metadata } = body
+    const headerProvider = inferProviderFromHeaders(request.headers)
+    const hasPayloadProviderHint = Boolean(
+      payload?.provider || payload?.metadata?.provider || payload?.payment_method || payload?.method
+    )
+    const payloadProvider = hasPayloadProviderHint ? extractProvider(payload) : null
 
+    const providerCandidates = headerProvider
+      ? [headerProvider]
+      : payloadProvider
+        ? [payloadProvider]
+        : ['orange', 'wave']
+
+    const providersWithSecrets = providerCandidates.filter(provider => {
+      if (provider === 'orange') return Boolean(process.env.ORANGE_WEBHOOK_SECRET)
+      return Boolean(process.env.WAVE_WEBHOOK_SECRET)
+    })
+
+    if (providersWithSecrets.length > 0) {
+      const hasValidSignature = providersWithSecrets.some(provider => verifyWebhookSignature({
+        headers: request.headers,
+        rawBody,
+        provider,
+      }))
+
+      if (!hasValidSignature) {
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      }
+    }
+
+    const reference = extractPaymentReference(payload)
     if (!reference) {
       return NextResponse.json({ error: 'Payment reference required' }, { status: 400 })
     }
 
-    const provider = metadata?.provider || 'wave'
-
-    if (event === 'payment.initiated') {
-      return NextResponse.json({ received: true })
+    const normalizedStatus = extractNormalizedStatus(payload)
+    const context = await resolvePaymentContext(reference)
+    if (!context) {
+      return NextResponse.json({ error: 'Payment or order not found' }, { status: 404 })
     }
 
-    if (event === 'payment.completed' || status === 'completed') {
-      const payment = await prisma.payment.findUnique({
-        where: { reference }
+    const { order, payment } = context
+    const dbPaymentStatus = toDbPaymentStatus(normalizedStatus)
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paymentReference: reference,
+          paymentStatus: dbPaymentStatus,
+          status: normalizedStatus === 'completed' && order.status === 'PENDING'
+            ? 'CONFIRMED'
+            : order.status,
+        }
       })
 
-      if (!payment) {
-        return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
-      }
-
-      if (payment.status === 'completed') {
-        return NextResponse.json({ message: 'Payment already processed' })
-      }
-
-      await prisma.payment.update({
-        where: { reference },
-        data: { status: 'completed' }
-      })
-
-      const order = await prisma.order.findUnique({
-        where: { id: payment.orderId }
-      })
-
-      if (order && order.status === 'pending') {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { status: 'confirmed' }
+      if (payment) {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: dbPaymentStatus,
+            providerReference: reference,
+          }
         })
       }
+    })
 
-      return NextResponse.json({ success: true, message: 'Payment confirmed' })
-    }
-
-    if (event === 'payment.failed' || status === 'failed') {
-      await prisma.payment.update({
-        where: { reference },
-        data: { status: 'failed' }
-      })
-
-      return NextResponse.json({ success: true, message: 'Payment failed recorded' })
-    }
-
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ success: true, reference, status: normalizedStatus })
   } catch (err) {
     console.error('Webhook error:', err)
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
@@ -113,37 +128,54 @@ export async function GET(request) {
   }
 
   try {
-    const payment = await prisma.payment.findUnique({
-      where: { reference }
-    })
-
-    if (!payment) {
-      return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+    const context = await resolvePaymentContext(reference)
+    if (!context) {
+      return NextResponse.json({ error: 'Payment or order not found' }, { status: 404 })
     }
 
-    if (payment.status === 'pending') {
-      const providerStatus = await checkPaymentStatus(reference, provider)
-      
-      if (providerStatus.success && providerStatus.status === 'completed') {
-        await prisma.payment.update({
-          where: { reference },
-          data: { status: 'completed' }
+    const { order, payment } = context
+    const providerStatus = await checkPaymentStatus(reference, provider)
+
+    if (providerStatus.success) {
+      const normalizedStatus = providerStatus.status
+      const dbPaymentStatus = toDbPaymentStatus(normalizedStatus)
+
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            paymentReference: reference,
+            paymentStatus: dbPaymentStatus,
+            status: normalizedStatus === 'completed' && order.status === 'PENDING'
+              ? 'CONFIRMED'
+              : order.status,
+          }
         })
 
-        await prisma.order.update({
-          where: { id: payment.orderId },
-          data: { status: 'confirmed' }
-        })
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: dbPaymentStatus,
+              providerReference: reference,
+            }
+          })
+        }
+      })
 
-        payment.status = 'completed'
-      }
+      return NextResponse.json({
+        reference,
+        provider: providerStatus.provider,
+        status: normalizedStatus,
+        paymentStatus: dbPaymentStatus,
+      })
     }
 
     return NextResponse.json({
-      reference: payment.reference,
-      status: payment.status,
-      amount: payment.amount,
-      provider: payment.provider
+      reference,
+      provider,
+      status: String(order.paymentStatus || 'PENDING').toLowerCase(),
+      paymentStatus: order.paymentStatus,
     })
   } catch (err) {
     console.error('Payment status check error:', err)

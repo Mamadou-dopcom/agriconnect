@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
+import { config } from '@/lib/config'
+import {
+  initiateOrangeMoneyPayment,
+  initiateWavePayment,
+  validatePhoneForPayment,
+} from '@/lib/payments'
 
 function generateOrderNumber() {
   return `AC${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
@@ -9,8 +15,6 @@ function generateOrderNumber() {
 
 const MAX_ITEMS_PER_ORDER = 50
 const MAX_QUANTITY_PER_ITEM = 10000
-const MIN_DELIVERY_FEE = 0
-const MAX_DELIVERY_FEE = 50000
 
 function sanitizeInput(input, maxLength = 500) {
   if (!input || typeof input !== 'string') return null
@@ -85,6 +89,22 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Mode de paiement invalide' }, { status: 400 })
     }
 
+    const buyer = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, phone: true }
+    })
+
+    if (!buyer) {
+      return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 })
+    }
+
+    const requiresOnlinePayment = paymentMethod === 'WAVE' || paymentMethod === 'ORANGE_MONEY'
+    const provider = paymentMethod === 'WAVE' ? 'wave' : paymentMethod === 'ORANGE_MONEY' ? 'orange' : null
+
+    if (provider === 'orange' && !validatePhoneForPayment(buyer.phone, 'orange')) {
+      return NextResponse.json({ error: 'Numéro invalide pour Orange Money' }, { status: 400 })
+    }
+
     let subtotal = 0
     let farmerId = null
     const orderItems = []
@@ -129,12 +149,12 @@ export async function POST(request) {
       })
     }
 
-    const deliveryFee = 700
-    if (deliveryFee < MIN_DELIVERY_FEE || deliveryFee > MAX_DELIVERY_FEE) {
+    const deliveryFee = config.deliveryFee
+    if (deliveryFee < config.minDeliveryFee || deliveryFee > config.maxDeliveryFee) {
       return NextResponse.json({ error: 'Frais de livraison invalides' }, { status: 400 })
     }
     
-    const commission = Math.round(subtotal * 0.10)
+    const commission = Math.round(subtotal * (config.platformCommissionPercent / 100))
     const totalAmount = subtotal + deliveryFee + commission
 
     const order = await prisma.$transaction(async (tx) => {
@@ -177,7 +197,94 @@ export async function POST(request) {
       return newOrder
     })
 
-    return NextResponse.json({ message: 'Commande créée !', order }, { status: 201 })
+    let paymentPayload = null
+
+    if (requiresOnlinePayment) {
+
+      const paymentMetadata = {
+        provider,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        buyerId: order.buyerId,
+        farmerId: order.farmerId,
+      }
+
+      const initResult = provider === 'wave'
+        ? await initiateWavePayment(totalAmount, 'XOF', paymentMetadata)
+        : await initiateOrangeMoneyPayment(totalAmount, buyer.phone, paymentMetadata)
+
+      if (initResult.error) {
+        await prisma.$transaction(async (tx) => {
+          await tx.payment.create({
+            data: {
+              orderId: order.id,
+              amount: totalAmount,
+              currency: 'XOF',
+              method: paymentMethod,
+              status: 'FAILED',
+            }
+          })
+
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'FAILED',
+              status: 'CANCELLED'
+            }
+          })
+
+          for (const orderItem of orderItems) {
+            await tx.product.update({
+              where: { id: orderItem.productId },
+              data: {
+                quantityAvailable: { increment: orderItem.productQuantity },
+                ordersCount: { decrement: 1 }
+              }
+            })
+          }
+
+          await tx.notification.create({
+            data: {
+              userId: order.farmerId,
+              title: '❌ Paiement échoué',
+              body: `La commande #${order.orderNumber} a été annulée (échec du paiement).`,
+              type: 'order_update',
+            }
+          })
+        })
+
+        return NextResponse.json({ error: initResult.error }, { status: 502 })
+      }
+
+      const providerReference = initResult.reference || null
+
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          amount: totalAmount,
+          currency: 'XOF',
+          method: paymentMethod,
+          status: 'PENDING',
+          providerReference,
+        }
+      })
+
+      if (providerReference) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { paymentReference: providerReference }
+        })
+      }
+
+      paymentPayload = {
+        provider,
+        reference: providerReference,
+        checkoutUrl: initResult.checkoutUrl || null,
+        status: 'PENDING'
+      }
+    }
+
+    return NextResponse.json({ message: 'Commande créée !', order, payment: paymentPayload }, { status: 201 })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

@@ -14,11 +14,19 @@ export default function CartPage() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [deliveryAddress, setDeliveryAddress] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('CASH')
+  const [feesConfig, setFeesConfig] = useState({ deliveryFee: 700, platformCommissionPercent: 10 })
 
   const fetchCart = async () => {
     try {
-      const res = await axios.get('/api/cart')
-      setCart(res.data)
+      const [cartRes, configRes] = await Promise.all([
+        axios.get('/api/cart'),
+        axios.get('/api/config')
+      ])
+      setCart(cartRes.data)
+      setFeesConfig({
+        deliveryFee: configRes.data?.deliveryFee || 700,
+        platformCommissionPercent: configRes.data?.platformCommissionPercent || 10
+      })
     } catch (err) {
       toast.error('Erreur lors du chargement du panier')
     } finally {
@@ -51,6 +59,12 @@ export default function CartPage() {
         paymentMethod
       })
 
+      if (res.data?.payment?.checkoutUrl) {
+        toast.success('Redirection vers le paiement...')
+        window.location.href = res.data.payment.checkoutUrl
+        return
+      }
+
       toast.success('Commande passée avec succès !')
       router.push(`/buyer/orders/${res.data.order.id}`)
     } catch (err) {
@@ -61,8 +75,8 @@ export default function CartPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + (item.product.pricePerUnit * item.quantity), 0)
-  const deliveryFee = cart.length > 0 ? 700 : 0
-  const commission = Math.round(subtotal * 0.10)
+  const deliveryFee = cart.length > 0 ? feesConfig.deliveryFee : 0
+  const commission = Math.round(subtotal * (feesConfig.platformCommissionPercent / 100))
   const total = subtotal + deliveryFee + commission
 
   if (loading) {
