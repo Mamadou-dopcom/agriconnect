@@ -5,11 +5,10 @@ import { usePathname } from 'next/navigation'
 
 const navItems = [
   { href: '/admin/dashboard', icon: '📊', label: 'Tableau de bord' },
+  { href: '/admin/users', icon: '👥', label: 'Utilisateurs' },
   { href: '/admin/orders', icon: '📦', label: 'Commandes' },
-  { href: '/admin/farmers', icon: '👨‍🌾', label: 'Agriculteurs' },
-  { href: '/admin/buyers', icon: '🛒', label: 'Acheteurs' },
   { href: '/admin/products', icon: '🌿', label: 'Produits' },
-  { href: '/admin/payments', icon: '💰', label: 'Paiements' },
+  { href: '/admin/categories', icon: '📂', label: 'Catégories' },
 ]
 
 export default function AdminLayout({ children }) {
