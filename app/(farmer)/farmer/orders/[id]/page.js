@@ -23,7 +23,6 @@ const nextStatus = {
   CONFIRMED: 'PREPARING',
   PREPARING: 'READY',
   READY: 'DELIVERING',
-  DELIVERING: 'DELIVERED',
 }
 
 export default function FarmerOrderDetailsPage() {

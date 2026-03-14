@@ -9,6 +9,7 @@ export default function FarmerProductsPage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(null)
+  const [productToDelete, setProductToDelete] = useState(null)
 
   useEffect(() => {
     fetchProducts()
@@ -26,12 +27,11 @@ export default function FarmerProductsPage() {
   }
 
   const deleteProduct = async (id) => {
-    if (!confirm('Voulez-vous vraiment supprimer ce produit ?')) return
-    
     setDeleting(id)
     try {
       await axios.delete(`/api/farmer/products/${id}`)
       toast.success('Produit supprimé')
+      setProductToDelete(null)
       fetchProducts()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
@@ -54,7 +54,7 @@ export default function FarmerProductsPage() {
         <div className="flex justify-between items-center mb-4">
           <h1 className="font-sora font-bold text-xl text-gray-900">Mes produits</h1>
           <Link href="/farmer/products/new" className="btn-primary">
-            + Ajouter
+            Ajouter un produit
           </Link>
         </div>
 
@@ -107,7 +107,7 @@ export default function FarmerProductsPage() {
                     Modifier
                   </Link>
                   <button
-                    onClick={() => deleteProduct(product.id)}
+                    onClick={() => setProductToDelete(product)}
                     disabled={deleting === product.id}
                     className="flex-1 text-center py-2 border border-red-200 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
@@ -119,6 +119,44 @@ export default function FarmerProductsPage() {
           </div>
         )}
       </div>
+
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-gray-100 shadow-xl p-5">
+            <h3 className="font-sora font-bold text-lg text-gray-900">Supprimer le produit ?</h3>
+            <p className="text-sm text-gray-600 mt-2">
+              Vous êtes sur le point de supprimer
+              <span className="font-semibold text-gray-900"> {productToDelete.name}</span>.
+              Cette action est irréversible.
+            </p>
+
+            <div className="mt-4 rounded-xl bg-red-50 border border-red-100 p-3">
+              <p className="text-xs text-red-700">
+                Le produit disparaîtra immédiatement du catalogue acheteur.
+              </p>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={deleting === productToDelete.id}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 disabled:opacity-60"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteProduct(productToDelete.id)}
+                disabled={deleting === productToDelete.id}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting === productToDelete.id ? 'Suppression...' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </FarmerLayout>
   )
 }

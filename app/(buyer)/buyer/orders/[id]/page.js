@@ -22,21 +22,64 @@ export default function OrderDetailsPage() {
   const params = useParams()
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
     fetchOrder()
   }, [params.id])
 
   const fetchOrder = async () => {
+    const orderId = Array.isArray(params?.id) ? params.id[0] : params?.id
+    if (!orderId) {
+      setLoading(false)
+      return
+    }
+
     try {
-      const res = await axios.get('/api/orders')
-      const orders = res.data.orders || res.data
-      const found = orders.find(o => o.id === params.id)
-      setOrder(found)
+      const res = await axios.get(`/api/orders/${orderId}`)
+      setOrder(res.data)
     } catch (err) {
       toast.error('Erreur lors du chargement')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const cancelOrder = async () => {
+    if (!order) return
+    if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
+      toast.error('Cette commande ne peut plus être annulée')
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      await axios.delete(`/api/orders/${order.id}`)
+      toast.success('Commande annulée')
+      await fetchOrder()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de l\'annulation')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const confirmDelivery = async () => {
+    if (!order) return
+    if (order.status !== 'DELIVERING') {
+      toast.error('Cette commande ne peut pas être confirmée')
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      await axios.patch(`/api/orders/${order.id}/status`, { status: 'DELIVERED' })
+      toast.success('Commande confirmée comme livrée')
+      await fetchOrder()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la confirmation')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -150,6 +193,30 @@ export default function OrderDetailsPage() {
               <p className="text-sm text-gray-600 mt-1">Note: {order.review.rating}/5</p>
             </div>
           )}
+
+          <div className="mt-4 grid grid-cols-1 gap-2">
+            {['PENDING', 'CONFIRMED'].includes(order.status) && (
+              <button
+                type="button"
+                onClick={cancelOrder}
+                disabled={actionLoading}
+                className="btn-secondary w-full text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+              >
+                {actionLoading ? '...' : 'Annuler la commande'}
+              </button>
+            )}
+
+            {order.status === 'DELIVERING' && (
+              <button
+                type="button"
+                onClick={confirmDelivery}
+                disabled={actionLoading}
+                className="btn-primary w-full disabled:opacity-50"
+              >
+                {actionLoading ? '...' : 'Confirmer la réception'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </BuyerLayout>

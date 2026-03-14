@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { isValidUUID } from '@/lib/validation'
 
 const MAX_PRICE = 1000000
 const MAX_QUANTITY = 100000
@@ -21,9 +20,8 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 
@@ -50,9 +48,8 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 
@@ -129,9 +126,8 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 

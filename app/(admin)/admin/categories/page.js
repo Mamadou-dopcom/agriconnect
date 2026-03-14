@@ -97,7 +97,7 @@ export default function AdminCategoriesPage() {
             onClick={() => { resetForm(); setShowForm(!showForm) }}
             className="btn-primary"
           >
-            {showForm ? 'Annuler' : '+ Ajouter'}
+            {showForm ? 'Annuler' : 'Ajouter une catégorie'}
           </button>
         </div>
 

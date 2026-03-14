@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { isValidUUID } from '@/lib/validation'
 
 const VALID_STATUS_TRANSITIONS = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -21,9 +20,8 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 
@@ -38,7 +36,10 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Statut invalide' }, { status: 400 })
     }
 
-    const order = await prisma.order.findUnique({ where: { id } })
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: true }
+    })
 
     if (!order) {
       return NextResponse.json({ error: 'Commande non trouvée' }, { status: 404 })
@@ -52,6 +53,20 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
     }
 
+    if (isBuyer) {
+      const canBuyerConfirmDelivery = order.status === 'DELIVERING' && status === 'DELIVERED'
+      if (!canBuyerConfirmDelivery) {
+        return NextResponse.json({ error: 'Action non autorisée pour acheteur' }, { status: 403 })
+      }
+    }
+
+    if (isFarmer) {
+      const disallowedForFarmer = status === 'DELIVERED'
+      if (disallowedForFarmer) {
+        return NextResponse.json({ error: 'Action non autorisée pour agriculteur' }, { status: 403 })
+      }
+    }
+
     const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status] || []
     
     if (!allowedTransitions.includes(status)) {
@@ -60,15 +75,39 @@ export async function PATCH(request, { params }) {
       }, { status: 400 })
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: { status },
-      include: {
-        buyer: { select: { id: true, fullName: true, phone: true } },
-        farmer: { select: { id: true, fullName: true, phone: true } },
-        items: true
-      }
-    })
+    const updatedOrder = status === 'CANCELLED'
+      ? await prisma.$transaction(async (tx) => {
+          const updated = await tx.order.update({
+            where: { id },
+            data: { status },
+            include: {
+              buyer: { select: { id: true, fullName: true, phone: true } },
+              farmer: { select: { id: true, fullName: true, phone: true } },
+              items: true
+            }
+          })
+
+          for (const item of order.items) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                quantityAvailable: { increment: item.quantity },
+                ordersCount: { decrement: 1 }
+              }
+            })
+          }
+
+          return updated
+        })
+      : await prisma.order.update({
+          where: { id },
+          data: { status },
+          include: {
+            buyer: { select: { id: true, fullName: true, phone: true } },
+            farmer: { select: { id: true, fullName: true, phone: true } },
+            items: true
+          }
+        })
 
     const notifyUserId = isFarmer ? order.buyerId : order.farmerId
     const statusLabels = {

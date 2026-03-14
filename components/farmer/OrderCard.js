@@ -9,7 +9,7 @@ const statusConfig = {
   CONFIRMED: { label: '✅ Confirmée', class: 'badge-confirmed', next: 'PREPARING', nextLabel: '👨‍🌾 Préparer' },
   PREPARING: { label: '👨‍🌾 Préparation', class: 'badge-preparing', next: 'READY', nextLabel: '📦 Prête' },
   READY: { label: '📦 Prête', class: 'badge-confirmed', next: 'DELIVERING', nextLabel: '🚴 En livraison' },
-  DELIVERING: { label: '🚴 Livraison', class: 'badge-preparing', next: 'DELIVERED', nextLabel: '✅ Livrée' },
+  DELIVERING: { label: '🚴 Livraison', class: 'badge-preparing', next: null },
   DELIVERED: { label: '✅ Livrée', class: 'badge-delivered', next: null },
   CANCELLED: { label: '❌ Annulée', class: 'badge-cancelled', next: null },
 }
@@ -22,7 +22,7 @@ export default function OrderCard({ order }) {
   const updateStatus = async (newStatus) => {
     setLoading(true)
     try {
-      await axios.put(`/api/orders/${order.id}/status`, { status: newStatus })
+      await axios.patch(`/api/orders/${order.id}/status`, { status: newStatus })
       toast.success('Statut mis à jour !')
       router.refresh()
     } catch (err) {

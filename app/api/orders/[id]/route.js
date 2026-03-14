@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { isValidUUID } from '@/lib/validation'
 
 export async function GET(request, { params }) {
   try {
@@ -11,9 +10,8 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 
@@ -45,9 +43,8 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const { id } = params
-
-    if (!isValidUUID(id)) {
+    const { id } = await params
+    if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
 

@@ -32,10 +32,18 @@ export default function NewProductPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('/api/products')
-      const allProducts = res.data.products || []
-      const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))]
-      setCategories(cats)
+      const res = await axios.get('/api/categories')
+      const rawCategories = Array.isArray(res.data.categories) ? res.data.categories : []
+      const uniqueById = []
+      const seen = new Set()
+
+      for (const cat of rawCategories) {
+        if (!cat?.id || seen.has(cat.id)) continue
+        seen.add(cat.id)
+        uniqueById.push(cat)
+      }
+
+      setCategories(uniqueById)
     } catch (err) {
       // ignore
     } finally {
@@ -123,9 +131,9 @@ export default function NewProductPage() {
               onChange={(e) => update('categoryId', e.target.value)}
             >
               <option value="">Sélectionner une catégorie</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.emoji} {cat.name}
+              {categories.map((cat, index) => (
+                <option key={`${cat.id}-${index}`} value={cat.id}>
+                  {cat.emoji || '📦'} {cat.name}
                 </option>
               ))}
             </select>
