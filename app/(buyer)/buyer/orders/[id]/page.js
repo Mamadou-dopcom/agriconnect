@@ -137,6 +137,19 @@ export default function OrderDetailsPage() {
               </span>
             </div>
           </div>
+
+          {order.status === 'DELIVERED' && !order.review && (
+            <Link href="/buyer/reviews" className="btn-primary w-full mt-4 inline-flex justify-center">
+              Donner un avis
+            </Link>
+          )}
+
+          {order.review && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-xl">
+              <p className="text-sm font-semibold text-green-700">Avis déjà envoyé</p>
+              <p className="text-sm text-gray-600 mt-1">Note: {order.review.rating}/5</p>
+            </div>
+          )}
         </div>
       </div>
     </BuyerLayout>

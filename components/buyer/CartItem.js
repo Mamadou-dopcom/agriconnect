@@ -36,12 +36,17 @@ export default function CartItem({ item, onUpdate, onRemove }) {
 
   const product = item.product
   const total = product.pricePerUnit * quantity
+  const mainImage = Array.isArray(product.images) ? product.images[0] : null
 
   return (
     <div className="bg-white rounded-2xl p-4 border border-gray-100">
       <div className="flex gap-4">
-        <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center text-3xl">
-          {product.category?.emoji || '🥬'}
+        <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center text-3xl overflow-hidden">
+          {mainImage ? (
+            <img src={mainImage} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            product.category?.emoji || '🥬'
+          )}
         </div>
         
         <div className="flex-1">

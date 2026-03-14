@@ -117,7 +117,9 @@ function FarmersContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {farmers.map((farmer) => (
+            {farmers.map((farmer) => {
+              const farmerRating = farmer.reviewCount > 0 ? (farmer.rating || 0) : 0
+              return (
               <Link
                 key={farmer.id}
                 href={`/buyer/farmers/${farmer.id}`}
@@ -147,7 +149,7 @@ function FarmersContent() {
 
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                   <div className="flex items-center gap-1">
-                    {renderStars(farmer.rating)}
+                    {renderStars(farmerRating)}
                     <span className="text-gray-400 text-xs ml-1">({farmer.reviewCount})</span>
                   </div>
                   <div className="text-right">
@@ -156,7 +158,8 @@ function FarmersContent() {
                   </div>
                 </div>
               </Link>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -197,6 +200,10 @@ function FarmersContent() {
         <Link href="/buyer/cart" className="flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400">
           <span className="text-2xl">🛒</span>
           <span className="text-xs font-semibold">Panier</span>
+        </Link>
+        <Link href="/buyer/orders" className="flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400">
+          <span className="text-2xl">📦</span>
+          <span className="text-xs font-semibold">Commandes</span>
         </Link>
         <Link href="/buyer/profile" className="flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400">
           <span className="text-2xl">👤</span>

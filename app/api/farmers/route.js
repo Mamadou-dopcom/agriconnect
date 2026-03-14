@@ -66,8 +66,8 @@ export async function GET(request) {
         _count: { _all: true }
       }),
       prisma.review.groupBy({
-        by: ['farmerId'],
-        where: { farmerId: { in: farmerIds } },
+        by: ['reviewedId'],
+        where: { reviewedId: { in: farmerIds } },
         _count: { _all: true }
       })
     ])
@@ -76,7 +76,7 @@ export async function GET(request) {
       productCounts.map((item) => [item.farmerId, item._count._all])
     )
     const reviewCountByFarmer = Object.fromEntries(
-      reviewCounts.map((item) => [item.farmerId, item._count._all])
+      reviewCounts.map((item) => [item.reviewedId, item._count._all])
     )
 
     const farmersWithStats = farmers.map((farmer) => {

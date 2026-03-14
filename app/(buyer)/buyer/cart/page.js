@@ -12,7 +12,6 @@ export default function CartPage() {
   const [cart, setCart] = useState([])
   const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
-  const [deliveryAddress, setDeliveryAddress] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [feesConfig, setFeesConfig] = useState({ deliveryFee: 700, platformCommissionPercent: 10 })
 
@@ -45,11 +44,6 @@ export default function CartPage() {
   const handleCheckout = async () => {
     if (cart.length === 0) return
     
-    if (!deliveryAddress.trim()) {
-      toast.error('Veuillez entrer une adresse de livraison')
-      return
-    }
-
     setCheckoutLoading(true)
     try {
       const items = cart.map(item => ({
@@ -59,7 +53,7 @@ export default function CartPage() {
 
       const res = await axios.post('/api/orders', {
         items,
-        deliveryAddress: deliveryAddress.trim(),
+        deliveryAddress: null,
         paymentMethod
       })
 
@@ -138,22 +132,6 @@ export default function CartPage() {
               />
             ))}
 
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 mt-6">
-              <h3 className="font-bold text-gray-900 mb-3">Informations de livraison</h3>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Adresse de livraison
-                </label>
-                <textarea
-                  className="input-field w-full"
-                  rows={2}
-                  placeholder="Ex: Quartier, rue, numéro..."
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                />
-              </div>
-            </div>
-
             <div className="bg-white rounded-2xl p-4 border border-gray-100">
               <h3 className="font-bold text-gray-900 mb-3">Mode de paiement</h3>
               {hasMultipleFarmers && (
@@ -215,7 +193,7 @@ export default function CartPage() {
 
             <button
               onClick={handleCheckout}
-              disabled={checkoutLoading || !deliveryAddress.trim()}
+              disabled={checkoutLoading}
               className="btn-primary w-full mt-4 disabled:opacity-60"
             >
               {checkoutLoading ? '⏳ Traitement...' : `Commander (${total.toLocaleString()} XOF)`}

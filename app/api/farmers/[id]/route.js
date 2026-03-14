@@ -10,7 +10,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
+
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
 
     const farmer = await prisma.user.findFirst({
       where: { id, role: 'FARMER' },
@@ -47,11 +51,11 @@ export async function GET(request, { params }) {
         include: { category: true },
         orderBy: { createdAt: 'desc' }
       }),
-      prisma.review.count({ where: { farmerId: id } }),
+      prisma.review.count({ where: { reviewedId: id } }),
       prisma.review.findMany({
-        where: { farmerId: id },
+        where: { reviewedId: id },
         include: {
-          buyer: { select: { fullName: true } }
+          reviewer: { select: { fullName: true } }
         },
         orderBy: { createdAt: 'desc' },
         take: 5
@@ -76,7 +80,7 @@ export async function GET(request, { params }) {
         id: r.id,
         rating: r.rating,
         comment: r.comment,
-        buyerName: r.buyer.fullName,
+        buyerName: r.reviewer.fullName,
         createdAt: r.createdAt
       }))
     })

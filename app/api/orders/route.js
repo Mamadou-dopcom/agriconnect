@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
 import { config } from '@/lib/config'
+import { randomUUID } from 'crypto'
 import {
   initiateOrangeMoneyPayment,
   initiateWavePayment,
@@ -10,7 +11,7 @@ import {
 } from '@/lib/payments'
 
 function generateOrderNumber() {
-  return `AC${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
+  return `AC${Date.now().toString().slice(-8)}${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
 }
 
 const MAX_ITEMS_PER_ORDER = 50
@@ -60,6 +61,12 @@ export async function GET(request) {
     })
   } catch (err) {
     console.error(err)
+    if (err?.code === 'P2002') {
+      return NextResponse.json({ error: 'Conflit de numero de commande, veuillez reessayer' }, { status: 409 })
+    }
+    if (err?.code === 'P2003') {
+      return NextResponse.json({ error: 'Un produit du panier n\'est plus disponible' }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
@@ -91,7 +98,7 @@ export async function POST(request) {
 
     const buyer = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, phone: true }
+      select: { id: true, phone: true, address: true, city: true, region: true }
     })
 
     if (!buyer) {
@@ -114,6 +121,9 @@ export async function POST(request) {
       productId: item?.productId,
       quantity: parseFloat(item?.quantity)
     }))
+
+    const fallbackAddress = buyer.address?.trim() || [buyer.city, buyer.region].filter(Boolean).join(', ') || 'A confirmer avec le client'
+    const resolvedDeliveryAddress = sanitizedDeliveryAddress || fallbackAddress
 
     for (const item of normalizedItems) {
       if (!item.productId || typeof item.productId !== 'string') {
@@ -197,22 +207,35 @@ export async function POST(request) {
         const commission = Math.round(group.subtotal * (config.platformCommissionPercent / 100))
         const totalAmount = group.subtotal + deliveryFee + commission
 
-        const newOrder = await tx.order.create({
-          data: {
-            orderNumber: generateOrderNumber(),
-            buyerId: session.user.id,
-            farmerId: group.farmerId,
-            deliveryAddress: sanitizedDeliveryAddress,
-            subtotal: group.subtotal,
-            deliveryFee,
-            platformCommission: commission,
-            totalAmount,
-            paymentMethod,
-            notes: sanitizedNotes,
-            items: { create: group.orderItems }
-          },
-          include: { items: true, buyer: true, farmer: true }
-        })
+        let newOrder = null
+        let attempts = 0
+        while (!newOrder && attempts < 3) {
+          attempts += 1
+          try {
+            newOrder = await tx.order.create({
+              data: {
+                orderNumber: generateOrderNumber(),
+                buyerId: session.user.id,
+                farmerId: group.farmerId,
+                deliveryAddress: resolvedDeliveryAddress,
+                subtotal: group.subtotal,
+                deliveryFee,
+                platformCommission: commission,
+                totalAmount,
+                paymentMethod,
+                notes: sanitizedNotes,
+                items: {
+                  create: group.orderItems.map(({ productQuantity, ...item }) => item)
+                }
+              },
+              include: { items: true, buyer: true, farmer: true }
+            })
+          } catch (error) {
+            if (error?.code !== 'P2002' || attempts >= 3) {
+              throw error
+            }
+          }
+        }
 
         for (const orderItem of group.orderItems) {
           await tx.product.update({

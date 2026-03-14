@@ -6,11 +6,14 @@ import { authOptions } from '../../auth/[...nextauth]/route'
 export async function DELETE(request, { params }) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
+    if (!session || session.user.role !== 'BUYER') {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
+    if (!id) {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
 
     const cartItem = await prisma.cartItem.findFirst({
       where: { id, userId: session.user.id }
@@ -34,14 +37,19 @@ export async function DELETE(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
+    if (!session || session.user.role !== 'BUYER') {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const { id } = params
-    const { quantity } = await request.json()
+    const { id } = await params
+    if (!id) {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
 
-    if (typeof quantity !== 'number' || quantity < 1) {
+    const { quantity } = await request.json()
+    const parsedQuantity = parseFloat(quantity)
+
+    if (isNaN(parsedQuantity) || parsedQuantity < 1) {
       return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
     }
 
@@ -54,13 +62,13 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Article non trouvé' }, { status: 404 })
     }
 
-    if (quantity > cartItem.product.quantityAvailable) {
+    if (parsedQuantity > cartItem.product.quantityAvailable) {
       return NextResponse.json({ error: 'Stock insuffisant' }, { status: 400 })
     }
 
     const updated = await prisma.cartItem.update({
       where: { id },
-      data: { quantity }
+      data: { quantity: parsedQuantity }
     })
 
     return NextResponse.json(updated)

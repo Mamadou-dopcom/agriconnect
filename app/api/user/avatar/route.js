@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
-import { sanitizeInput } from '@/lib/validation'
+
+const MAX_AVATAR_DATA_URL_LENGTH = 7 * 1024 * 1024
 
 export async function PUT(request) {
   try {
@@ -15,15 +16,24 @@ export async function PUT(request) {
     const { avatarUrl } = body
 
     if (avatarUrl !== undefined) {
-      const sanitizedUrl = sanitizeInput(avatarUrl)
-      if (sanitizedUrl && !sanitizedUrl.startsWith('http')) {
-        return NextResponse.json({ error: 'URL invalide' }, { status: 400 })
+      const normalizedAvatar = typeof avatarUrl === 'string' ? avatarUrl.trim() : ''
+      const isHttp = normalizedAvatar.startsWith('http://') || normalizedAvatar.startsWith('https://')
+      const isDataImage = normalizedAvatar.startsWith('data:image/')
+
+      if (normalizedAvatar && !isHttp && !isDataImage) {
+        return NextResponse.json({ error: 'Format image invalide' }, { status: 400 })
+      }
+
+      if (isDataImage && normalizedAvatar.length > MAX_AVATAR_DATA_URL_LENGTH) {
+        return NextResponse.json({ error: 'Image trop volumineuse (max 5MB)' }, { status: 400 })
       }
 
       await prisma.user.update({
         where: { id: session.user.id },
-        data: { avatarUrl: sanitizedUrl || null }
+        data: { avatarUrl: normalizedAvatar || null }
       })
+
+      return NextResponse.json({ success: true, avatarUrl: normalizedAvatar || null })
     }
 
     return NextResponse.json({ success: true })

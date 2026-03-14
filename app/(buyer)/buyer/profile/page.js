@@ -4,6 +4,7 @@ import { signOut, useSession } from 'next-auth/react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import BuyerLayout from '@/components/buyer/BuyerLayout'
+import AvatarUploader from '@/components/AvatarUploader'
 
 export default function BuyerProfilePage() {
   const { data: session, update: updateSession } = useSession()
@@ -63,11 +64,9 @@ export default function BuyerProfilePage() {
   }
 
   const handleAvatarUpdate = async () => {
-    if (!avatarUrl.trim()) return
     setUpdatingAvatar(true)
     try {
-      await axios.put('/api/user/avatar', { avatarUrl: avatarUrl.trim() })
-      await updateSession({ ...session, user: { ...session.user, image: avatarUrl.trim() } })
+      await axios.put('/api/user/avatar', { avatarUrl: avatarUrl || null })
       toast.success('Photo de profil mise à jour !')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erreur lors de la mise à jour')
@@ -94,33 +93,15 @@ export default function BuyerProfilePage() {
         {/* AVATAR SECTION */}
         <div className="bg-white rounded-2xl p-4 border border-gray-100 mb-4">
           <h3 className="font-bold text-gray-900 mb-3">Photo de profil</h3>
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-3xl overflow-hidden">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                '👤'
-              )}
-            </div>
-            <div className="flex-1">
-              <input
-                type="url"
-                placeholder="URL de votre photo de profil..."
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                className="input-field w-full text-sm"
-              />
-              <p className="text-xs text-gray-400 mt-1">Collez l'URL d'une image (ex: depuis Google Photos)</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleAvatarUpdate}
-              disabled={updatingAvatar || !avatarUrl.trim()}
-              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {updatingAvatar ? '...' : 'OK'}
-            </button>
-          </div>
+          <AvatarUploader value={avatarUrl} onChange={setAvatarUrl} placeholder="👤" />
+          <button
+            type="button"
+            onClick={handleAvatarUpdate}
+            disabled={updatingAvatar}
+            className="btn-primary px-4 py-2 text-sm disabled:opacity-50 mt-3"
+          >
+            {updatingAvatar ? '...' : 'Enregistrer la photo'}
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

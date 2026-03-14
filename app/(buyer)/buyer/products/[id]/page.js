@@ -70,6 +70,21 @@ export default function ProductDetailsPage() {
   }
 
   const total = product.pricePerUnit * quantity
+  const mainImage = Array.isArray(product.images) ? product.images[0] : null
+  const farmerRatingCount = product.farmer?.farmerProfile?.ratingCount || 0
+  const farmerRating = farmerRatingCount > 0 ? (product.farmer?.farmerProfile?.rating || 0) : 0
+
+  const renderStars = (value) => {
+    const stars = []
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <span key={i} className={i <= Math.round(value) ? 'text-yellow-400' : 'text-gray-300'}>
+          ★
+        </span>
+      )
+    }
+    return stars
+  }
 
   return (
     <BuyerLayout>
@@ -79,8 +94,12 @@ export default function ProductDetailsPage() {
         </Link>
 
         <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-          <div className="h-48 bg-green-50 flex items-center justify-center text-7xl">
-            {product.category?.emoji || '🌿'}
+          <div className="h-48 bg-green-50 flex items-center justify-center text-7xl overflow-hidden">
+            {mainImage ? (
+              <img src={mainImage} alt={product.name} className="w-full h-full object-cover" />
+            ) : (
+              product.category?.emoji || '🌿'
+            )}
           </div>
           
           <div className="p-4">
@@ -99,11 +118,12 @@ export default function ProductDetailsPage() {
             <Link href={`/buyer/farmers/${product.farmer.id}`} className="block mt-4 p-3 bg-gray-50 rounded-xl">
               <p className="font-semibold text-gray-900">👨‍🌾 {product.farmer.fullName}</p>
               <p className="text-sm text-gray-500">{product.farmer.city} • {product.farmer.region}</p>
-              {product.farmer.farmerProfile?.rating > 0 && (
-                <p className="text-sm text-yellow-500 mt-1">
-                  ⭐ {product.farmer.farmerProfile.rating.toFixed(1)} ({product.farmer.farmerProfile.ratingCount} avis)
+              <div className="mt-1 flex items-center gap-2">
+                <div className="text-sm flex">{renderStars(farmerRating)}</div>
+                <p className="text-sm text-gray-500">
+                  {farmerRating.toFixed(1)} ({farmerRatingCount} avis)
                 </p>
-              )}
+              </div>
             </Link>
 
             {product.description && (

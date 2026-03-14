@@ -80,9 +80,14 @@ export default function OrdersPage() {
                     <span className="text-sm text-gray-500">
                       {order.items?.length || 0} article{(order.items?.length || 0) > 1 ? 's' : ''}
                     </span>
-                    <span className="font-bold text-green-700">
-                      {order.totalAmount.toLocaleString()} XOF
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-green-700 block">
+                        {order.totalAmount.toLocaleString()} XOF
+                      </span>
+                      {order.status === 'DELIVERED' && !order.review && (
+                        <span className="text-xs text-amber-700 font-semibold">Avis à donner</span>
+                      )}
+                    </div>
                   </div>
                 </Link>
               )
